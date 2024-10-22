@@ -11,7 +11,7 @@ RUN pnpm build
 
 # Copiamos la carpeta dist de los custom-nodes a ~/.n8n/custom/
 RUN mkdir -p ~/.n8n/custom
-COPY packages/custom-nodes/dist ~/.n8n/custom
+COPY ./packages/custom-nodes/dist ~/.n8n/custom
 
 # Delete all dev dependencies
 RUN jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp; mv package.json.tmp package.json
