@@ -46,7 +46,7 @@ RUN \
 	addgroup -g 2000 task-runner && \
 	adduser -D -u 2000 -g "Task Runner User" -G task-runner task-runner
 
-COPY docker/images/n8n/docker-entrypoint.sh /
+COPY docker-entrypoint.sh /
 
 RUN \
 	mkdir .n8n && \
