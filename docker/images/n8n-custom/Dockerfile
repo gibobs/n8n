@@ -9,10 +9,6 @@ COPY . /src
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store --mount=type=cache,id=pnpm-metadata,target=/root/.cache/pnpm/metadata DOCKER_BUILD=true pnpm install --frozen-lockfile
 RUN pnpm build
 
-# Copiamos la carpeta dist de los custom-nodes a ~/.n8n/custom/
-RUN mkdir -p ~/.n8n/custom
-COPY custom-nodes/dist ~/.n8n/custom
-
 # Delete all dev dependencies
 RUN jq 'del(.pnpm.patchedDependencies)' package.json > package.json.tmp; mv package.json.tmp package.json
 RUN node .github/scripts/trim-fe-packageJson.js
@@ -42,6 +38,10 @@ RUN \
 	ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n && \
 	mkdir .n8n && \
 	chown node:node .n8n
+
+# Copiamos la carpeta dist de los custom-nodes a ~/.n8n/custom/
+COPY custom-nodes/dist ~/.n8n/custom
+RUN chown node:node .n8n/custom
 
 ENV SHELL /bin/sh
 USER node
