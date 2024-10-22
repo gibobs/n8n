@@ -9,12 +9,14 @@
 // XX denotes that the node is disabled
 // PD denotes that the node has pinned data
 
-import { recreateNodeExecutionStack } from '@/PartialExecutionUtils/recreateNodeExecutionStack';
-import { type IPinData, type IRunData } from 'n8n-workflow';
 import { AssertionError } from 'assert';
+import { type IPinData, type IRunData } from 'n8n-workflow';
+
+import { recreateNodeExecutionStack } from '@/PartialExecutionUtils/recreateNodeExecutionStack';
+
+import { createNodeData, toITaskData } from './helpers';
 import { DirectedGraph } from '../DirectedGraph';
 import { findSubgraph } from '../findSubgraph';
-import { createNodeData, toITaskData } from './helpers';
 
 describe('recreateNodeExecutionStack', () => {
 	//                   ►►
@@ -30,8 +32,8 @@ describe('recreateNodeExecutionStack', () => {
 			.addNodes(trigger, node)
 			.addConnections({ from: trigger, to: node });
 
-		const workflow = findSubgraph(graph, node, trigger);
-		const startNodes = [node];
+		const workflow = findSubgraph({ graph, destination: node, trigger });
+		const startNodes = new Set([node]);
 		const runData: IRunData = {
 			[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 		};
@@ -85,7 +87,7 @@ describe('recreateNodeExecutionStack', () => {
 		const workflow = new DirectedGraph()
 			.addNodes(trigger, node)
 			.addConnections({ from: trigger, to: node });
-		const startNodes = [trigger];
+		const startNodes = new Set([trigger]);
 		const runData: IRunData = {};
 		const pinData: IPinData = {};
 
@@ -119,7 +121,7 @@ describe('recreateNodeExecutionStack', () => {
 		const workflow = new DirectedGraph()
 			.addNodes(trigger, node)
 			.addConnections({ from: trigger, to: node });
-		const startNodes = [node];
+		const startNodes = new Set([node]);
 		const runData: IRunData = {};
 		const pinData: IPinData = {
 			[trigger.name]: [{ json: { value: 1 } }],
@@ -167,7 +169,7 @@ describe('recreateNodeExecutionStack', () => {
 			.addNodes(trigger, node1, node2)
 			.addConnections({ from: trigger, to: node1 }, { from: node1, to: node2 });
 
-		const startNodes = [node2];
+		const startNodes = new Set([node2]);
 		const runData: IRunData = {
 			[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 		};
@@ -202,7 +204,7 @@ describe('recreateNodeExecutionStack', () => {
 				{ from: node2, to: node3 },
 			);
 
-		const startNodes = [node3];
+		const startNodes = new Set([node3]);
 		const runData: IRunData = {
 			[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 			[node1.name]: [toITaskData([{ data: { value: 1 } }])],
@@ -285,7 +287,7 @@ describe('recreateNodeExecutionStack', () => {
 				{ from: node1, to: node3, inputIndex: 0 },
 				{ from: node2, to: node3, inputIndex: 1 },
 			);
-		const startNodes = [node3];
+		const startNodes = new Set([node3]);
 		const runData: IRunData = {
 			[trigger.name]: [toITaskData([{ data: { value: 1 } }])],
 			[node1.name]: [toITaskData([{ data: { value: 1 } }])],

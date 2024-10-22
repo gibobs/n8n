@@ -54,6 +54,7 @@ export class TelemetryEventRelay extends EventRelay {
 			'source-control-user-finished-push-ui': (event) =>
 				this.sourceControlUserFinishedPushUi(event),
 			'license-renewal-attempted': (event) => this.licenseRenewalAttempted(event),
+			'license-community-plus-registered': (event) => this.licenseCommunityPlusRegistered(event),
 			'variable-created': () => this.variableCreated(),
 			'external-secrets-provider-settings-saved': (event) =>
 				this.externalSecretsProviderSettingsSaved(event),
@@ -231,6 +232,16 @@ export class TelemetryEventRelay extends EventRelay {
 	private licenseRenewalAttempted({ success }: RelayEventMap['license-renewal-attempted']) {
 		this.telemetry.track('Instance attempted to refresh license', {
 			success,
+		});
+	}
+
+	private licenseCommunityPlusRegistered({
+		email,
+		licenseKey,
+	}: RelayEventMap['license-community-plus-registered']) {
+		this.telemetry.track('User registered for license community plus', {
+			email,
+			licenseKey,
 		});
 	}
 
@@ -640,7 +651,9 @@ export class TelemetryEventRelay extends EventRelay {
 				}
 
 				if (telemetryProperties.is_manual) {
-					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes);
+					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes, {
+						runData: runData.data.resultData?.runData,
+					});
 					telemetryProperties.node_graph = nodeGraphResult.nodeGraph;
 					telemetryProperties.node_graph_string = JSON.stringify(nodeGraphResult.nodeGraph);
 
@@ -652,7 +665,9 @@ export class TelemetryEventRelay extends EventRelay {
 
 			if (telemetryProperties.is_manual) {
 				if (!nodeGraphResult) {
-					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes);
+					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes, {
+						runData: runData.data.resultData?.runData,
+					});
 				}
 
 				let userRole: 'owner' | 'sharee' | undefined = undefined;
@@ -677,7 +692,9 @@ export class TelemetryEventRelay extends EventRelay {
 				};
 
 				if (!manualExecEventProperties.node_graph_string) {
-					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes);
+					nodeGraphResult = TelemetryHelpers.generateNodesGraph(workflow, this.nodeTypes, {
+						runData: runData.data.resultData?.runData,
+					});
 					manualExecEventProperties.node_graph_string = JSON.stringify(nodeGraphResult.nodeGraph);
 				}
 
@@ -763,7 +780,7 @@ export class TelemetryEventRelay extends EventRelay {
 			license_plan_name: this.license.getPlanName(),
 			license_tenant_id: config.getEnv('license.tenantId'),
 			binary_data_s3: isS3Available && isS3Selected && isS3Licensed,
-			multi_main_setup_enabled: config.getEnv('multiMainSetup.enabled'),
+			multi_main_setup_enabled: this.globalConfig.multiMainSetup.enabled,
 			metrics: {
 				metrics_enabled: this.globalConfig.endpoints.metrics.enable,
 				metrics_category_default: this.globalConfig.endpoints.metrics.includeDefaultMetrics,

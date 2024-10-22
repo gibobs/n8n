@@ -1,7 +1,6 @@
 import { GlobalConfig } from '@n8n/config';
 import convict from 'convict';
 import { InstanceSettings } from 'n8n-core';
-import { LOG_LEVELS } from 'n8n-workflow';
 import path from 'path';
 import { Container } from 'typedi';
 
@@ -163,33 +162,6 @@ export const schema = {
 		},
 	},
 
-	generic: {
-		// The timezone to use. Is important for nodes like "Cron" which start the
-		// workflow automatically at a specified time. This setting can also be
-		// overwritten on a per workflow basis in the workflow settings in the
-		// editor.
-		timezone: {
-			doc: 'The timezone to use',
-			format: '*',
-			default: 'America/New_York',
-			env: 'GENERIC_TIMEZONE',
-		},
-
-		releaseChannel: {
-			doc: 'N8N release channel',
-			format: ['stable', 'beta', 'nightly', 'dev'] as const,
-			default: 'dev',
-			env: 'N8N_RELEASE_TYPE',
-		},
-
-		gracefulShutdownTimeout: {
-			doc: 'How long should n8n process wait for components to shut down before exiting the process (seconds)',
-			format: Number,
-			default: 30,
-			env: 'N8N_GRACEFUL_SHUTDOWN_TIMEOUT',
-		},
-	},
-
 	secure_cookie: {
 		doc: 'This sets the `Secure` flag on n8n auth cookie',
 		format: Boolean,
@@ -294,41 +266,6 @@ export const schema = {
 		format: String,
 		default: '',
 		env: 'EXTERNAL_HOOK_FILES',
-	},
-
-	logs: {
-		level: {
-			doc: 'Log output level',
-			format: LOG_LEVELS,
-			default: 'info',
-			env: 'N8N_LOG_LEVEL',
-		},
-		output: {
-			doc: 'Where to output logs. Options are: console, file. Multiple can be separated by comma (",")',
-			format: String,
-			default: 'console',
-			env: 'N8N_LOG_OUTPUT',
-		},
-		file: {
-			fileCountMax: {
-				doc: 'Maximum number of files to keep.',
-				format: Number,
-				default: 100,
-				env: 'N8N_LOG_FILE_COUNT_MAX',
-			},
-			fileSizeMax: {
-				doc: 'Maximum size for each log file in MB.',
-				format: Number,
-				default: 16,
-				env: 'N8N_LOG_FILE_SIZE_MAX',
-			},
-			location: {
-				doc: 'Log file location; only used if log output is set to file.',
-				format: String,
-				default: path.join(Container.get(InstanceSettings).n8nFolder, 'logs/n8n.log'),
-				env: 'N8N_LOG_FILE_LOCATION',
-			},
-		},
 	},
 
 	push: {
@@ -527,11 +464,6 @@ export const schema = {
 			default: 'n8n',
 			env: 'N8N_REDIS_KEY_PREFIX',
 		},
-		queueModeId: {
-			doc: 'Unique ID for this n8n instance, is usually set automatically by n8n during startup',
-			format: String,
-			default: '',
-		},
 	},
 
 	/**
@@ -602,27 +534,6 @@ export const schema = {
 			format: Number,
 			default: -1,
 			env: 'N8N_WORKFLOW_HISTORY_PRUNE_TIME',
-		},
-	},
-
-	multiMainSetup: {
-		enabled: {
-			doc: 'Whether to enable multi-main setup for queue mode (license required)',
-			format: Boolean,
-			default: false,
-			env: 'N8N_MULTI_MAIN_SETUP_ENABLED',
-		},
-		ttl: {
-			doc: 'Time to live (in seconds) for leader key in multi-main setup',
-			format: Number,
-			default: 10,
-			env: 'N8N_MULTI_MAIN_SETUP_KEY_TTL',
-		},
-		interval: {
-			doc: 'Interval (in seconds) for leader check in multi-main setup',
-			format: Number,
-			default: 3,
-			env: 'N8N_MULTI_MAIN_SETUP_CHECK_INTERVAL',
 		},
 	},
 

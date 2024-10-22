@@ -18,7 +18,17 @@ import { Background } from '@vue-flow/background';
 import { MiniMap } from '@vue-flow/minimap';
 import Node from './elements/nodes/CanvasNode.vue';
 import Edge from './elements/edges/CanvasEdge.vue';
-import { computed, onMounted, onUnmounted, provide, ref, useCssModule, watch } from 'vue';
+import {
+	computed,
+	nextTick,
+	onMounted,
+	onUnmounted,
+	provide,
+	ref,
+	toRef,
+	useCssModule,
+	watch,
+} from 'vue';
 import type { EventBus } from 'n8n-design-system';
 import { createEventBus } from 'n8n-design-system';
 import { useContextMenu, type ContextMenuAction } from '@/composables/useContextMenu';
@@ -29,8 +39,10 @@ import type { PinDataSource } from '@/composables/usePinnedData';
 import { isPresent } from '@/utils/typesUtils';
 import { GRID_SIZE } from '@/utils/nodeViewUtils';
 import { CanvasKey } from '@/constants';
-import { onKeyDown, onKeyUp } from '@vueuse/core';
+import { onKeyDown, onKeyUp, useDebounceFn } from '@vueuse/core';
 import CanvasArrowHeadMarker from './elements/edges/CanvasArrowHeadMarker.vue';
+import { CanvasNodeRenderType } from '@/types';
+import CanvasBackgroundStripedPattern from './elements/CanvasBackgroundStripedPattern.vue';
 
 const $style = useCssModule();
 
@@ -78,7 +90,9 @@ const props = withDefaults(
 		controlsPosition?: PanelPosition;
 		eventBus?: EventBus<CanvasEventBusEvents>;
 		readOnly?: boolean;
+		executing?: boolean;
 		keyBindings?: boolean;
+		showBugReportingButton?: boolean;
 	}>(),
 	{
 		id: 'canvas',
@@ -87,6 +101,7 @@ const props = withDefaults(
 		controlsPosition: PanelPosition.BottomLeft,
 		eventBus: () => createEventBus(),
 		readOnly: false,
+		executing: false,
 		keyBindings: true,
 	},
 );
@@ -106,6 +121,8 @@ const {
 	nodes: graphNodes,
 	onPaneReady,
 	findNode,
+	onNodesInitialized,
+	viewport,
 } = useVueFlow({ id: props.id, deleteKeyCode: null });
 
 const isPaneReady = ref(false);
@@ -125,47 +142,67 @@ const disableKeyBindings = computed(() => !props.keyBindings);
 /**
  * @see https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_key_values#whitespace_keys
  */
-const panningKeyCode = ' ';
+
 const isPanningEnabled = ref(false);
+const panningKeyCode = ' ';
+const selectionKeyCode = ref<true | null>(true);
 
 onKeyDown(panningKeyCode, () => {
 	isPanningEnabled.value = true;
+	selectionKeyCode.value = null;
 });
 
 onKeyUp(panningKeyCode, () => {
 	isPanningEnabled.value = false;
+	selectionKeyCode.value = true;
 });
 
-useKeybindings(
-	{
-		ctrl_c: emitWithSelectedNodes((ids) => emit('copy:nodes', ids)),
-		ctrl_x: emitWithSelectedNodes((ids) => emit('cut:nodes', ids)),
-		'delete|backspace': emitWithSelectedNodes((ids) => emit('delete:nodes', ids)),
-		ctrl_d: emitWithSelectedNodes((ids) => emit('duplicate:nodes', ids)),
-		d: emitWithSelectedNodes((ids) => emit('update:nodes:enabled', ids)),
-		p: emitWithSelectedNodes((ids) => emit('update:nodes:pin', ids, 'keyboard-shortcut')),
-		enter: emitWithLastSelectedNode((id) => onSetNodeActive(id)),
-		f2: emitWithLastSelectedNode((id) => emit('update:node:name', id)),
-		tab: () => emit('create:node', 'tab'),
-		shift_s: () => emit('create:sticky'),
-		ctrl_alt_n: () => emit('create:workflow'),
-		ctrl_enter: () => emit('run:workflow'),
-		ctrl_s: () => emit('save:workflow'),
-		ctrl_a: () => addSelectedNodes(graphNodes.value),
-		'+|=': async () => await onZoomIn(),
-		'-|_': async () => await onZoomOut(),
-		0: async () => await onResetZoom(),
-		1: async () => await onFitView(),
-		// @TODO implement arrow key shortcuts to modify selection
-	},
-	{ disabled: disableKeyBindings },
-);
+const keyMap = computed(() => ({
+	ctrl_c: emitWithSelectedNodes((ids) => emit('copy:nodes', ids)),
+	enter: emitWithLastSelectedNode((id) => onSetNodeActive(id)),
+	ctrl_a: () => addSelectedNodes(graphNodes.value),
+	'+|=': async () => await onZoomIn(),
+	'-|_': async () => await onZoomOut(),
+	0: async () => await onResetZoom(),
+	1: async () => await onFitView(),
+	// @TODO implement arrow key shortcuts to modify selection
+
+	...(props.readOnly
+		? {}
+		: {
+				ctrl_x: emitWithSelectedNodes((ids) => emit('cut:nodes', ids)),
+				'delete|backspace': emitWithSelectedNodes((ids) => emit('delete:nodes', ids)),
+				ctrl_d: emitWithSelectedNodes((ids) => emit('duplicate:nodes', ids)),
+				d: emitWithSelectedNodes((ids) => emit('update:nodes:enabled', ids)),
+				p: emitWithSelectedNodes((ids) => emit('update:nodes:pin', ids, 'keyboard-shortcut')),
+				f2: emitWithLastSelectedNode((id) => emit('update:node:name', id)),
+				tab: () => emit('create:node', 'tab'),
+				shift_s: () => emit('create:sticky'),
+				ctrl_alt_n: () => emit('create:workflow'),
+				ctrl_enter: () => emit('run:workflow'),
+				ctrl_s: () => emit('save:workflow'),
+			}),
+}));
+
+useKeybindings(keyMap, { disabled: disableKeyBindings });
+
+/**
+ * When the window is focused, the selection key code is lost.
+ * We trigger a value refresh to ensure that the selection key code is set correctly again.
+ *
+ * @issue https://linear.app/n8n/issue/N8N-7843/selection-keycode-gets-unset-when-changing-tabs
+ */
+function resetSelectionKeyCode() {
+	selectionKeyCode.value = null;
+	void nextTick(() => {
+		selectionKeyCode.value = true;
+	});
+}
 
 /**
  * Nodes
  */
 
-const selectionKeyCode = computed(() => (isPanningEnabled.value ? null : true));
 const lastSelectedNode = computed(() => selectedNodes.value[selectedNodes.value.length - 1]);
 const hasSelection = computed(() => selectedNodes.value.length > 0);
 const selectedNodeIds = computed(() => selectedNodes.value.map((node) => node.id));
@@ -174,21 +211,22 @@ function onClickNodeAdd(id: string, handle: string) {
 	emit('click:node:add', id, handle);
 }
 
-function onUpdateNodesPosition(events: NodePositionChange[]) {
+// Debounced to prevent emitting too many events, necessary for undo/redo
+const onUpdateNodesPosition = useDebounceFn((events: NodePositionChange[]) => {
 	emit('update:nodes:position', events);
-}
+}, 200);
 
 function onUpdateNodePosition(id: string, position: XYPosition) {
 	emit('update:node:position', id, position);
 }
 
-function onNodesChange(events: NodeChange[]) {
-	const isPositionChangeEvent = (event: NodeChange): event is NodePositionChange =>
-		event.type === 'position' && 'position' in event;
+const isPositionChangeEvent = (event: NodeChange): event is NodePositionChange =>
+	event.type === 'position' && 'position' in event;
 
+function onNodesChange(events: NodeChange[]) {
 	const positionChangeEndEvents = events.filter(isPositionChangeEvent);
 	if (positionChangeEndEvents.length > 0) {
-		onUpdateNodesPosition(positionChangeEndEvents);
+		void onUpdateNodesPosition(positionChangeEndEvents);
 	}
 }
 
@@ -460,16 +498,23 @@ function onMinimapMouseLeave() {
 onMounted(() => {
 	props.eventBus.on('fitView', onFitView);
 	props.eventBus.on('nodes:select', onSelectNodes);
+	window.addEventListener('focus', resetSelectionKeyCode);
 });
 
 onUnmounted(() => {
 	props.eventBus.off('fitView', onFitView);
 	props.eventBus.off('nodes:select', onSelectNodes);
+	window.removeEventListener('focus', resetSelectionKeyCode);
 });
 
 onPaneReady(async () => {
 	await onFitView();
 	isPaneReady.value = true;
+});
+
+onNodesInitialized((nodes) => {
+	if (nodes.length !== 1 || nodes[0].data?.render.type !== CanvasNodeRenderType.AddNodes) return;
+	void onFitView();
 });
 
 watch(() => props.readOnly, setReadonly, {
@@ -480,8 +525,11 @@ watch(() => props.readOnly, setReadonly, {
  * Provide
  */
 
+const isExecuting = toRef(props, 'executing');
+
 provide(CanvasKey, {
 	connectingHandle,
+	isExecuting,
 });
 </script>
 
@@ -545,7 +593,11 @@ provide(CanvasKey, {
 
 		<CanvasArrowHeadMarker :id="arrowHeadMarkerId" />
 
-		<Background data-test-id="canvas-background" pattern-color="#aaa" :gap="GRID_SIZE" />
+		<Background data-test-id="canvas-background" pattern-color="#aaa" :gap="GRID_SIZE">
+			<template v-if="readOnly" #pattern-container>
+				<CanvasBackgroundStripedPattern :x="viewport.x" :y="viewport.y" :zoom="viewport.zoom" />
+			</template>
+		</Background>
 
 		<Transition name="minimap">
 			<MiniMap
@@ -569,6 +621,7 @@ provide(CanvasKey, {
 			:class="$style.canvasControls"
 			:position="controlsPosition"
 			:show-interactive="false"
+			:show-bug-reporting-button="showBugReportingButton"
 			:zoom="zoom"
 			@zoom-to-fit="onFitView"
 			@zoom-in="onZoomIn"

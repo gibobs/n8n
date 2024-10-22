@@ -1,19 +1,18 @@
 import {
-	mapLegacyConnectionsToCanvasConnections,
-	mapLegacyEndpointsToCanvasConnectionPort,
-	getUniqueNodeName,
-	mapCanvasConnectionToLegacyConnection,
-	parseCanvasConnectionHandleString,
 	createCanvasConnectionHandleString,
 	createCanvasConnectionId,
+	mapCanvasConnectionToLegacyConnection,
+	mapLegacyConnectionsToCanvasConnections,
+	mapLegacyEndpointsToCanvasConnectionPort,
+	parseCanvasConnectionHandleString,
 	checkOverlap,
 } from '@/utils/canvasUtilsV2';
-import { NodeConnectionType, type IConnections, type INodeTypeDescription } from 'n8n-workflow';
+import { type IConnections, type INodeTypeDescription, NodeConnectionType } from 'n8n-workflow';
 import type { CanvasConnection } from '@/types';
+import { CanvasConnectionMode } from '@/types';
 import type { INodeUi } from '@/Interface';
 import type { Connection } from '@vue-flow/core';
 import { createTestNode } from '@/__tests__/mocks';
-import { CanvasConnectionMode } from '@/types';
 
 vi.mock('uuid', () => ({
 	v4: vi.fn(() => 'mock-uuid'),
@@ -802,35 +801,28 @@ describe('mapLegacyEndpointsToCanvasConnectionPort', () => {
 			{ type: NodeConnectionType.AiTool, index: 0, label: 'Optional Tool' },
 		]);
 	});
-});
 
-describe('getUniqueNodeName', () => {
-	it('should return the original name if it is unique', () => {
-		const name = 'Node A';
-		const existingNames = new Set(['Node B', 'Node C']);
-		const result = getUniqueNodeName(name, existingNames);
-		expect(result).toBe(name);
-	});
+	it('should map maxConnections correctly', () => {
+		const endpoints: INodeTypeDescription['inputs'] = [
+			NodeConnectionType.Main,
+			{
+				type: NodeConnectionType.AiMemory,
+				maxConnections: 1,
+				displayName: 'Optional Tool',
+				required: false,
+			},
+		];
+		const result = mapLegacyEndpointsToCanvasConnectionPort(endpoints);
 
-	it('should append a number to the name if it already exists', () => {
-		const name = 'Node A';
-		const existingNames = new Set(['Node A', 'Node B']);
-		const result = getUniqueNodeName(name, existingNames);
-		expect(result).toBe('Node A 1');
-	});
-
-	it('should find the next available number for the name', () => {
-		const name = 'Node A';
-		const existingNames = new Set(['Node A', 'Node A 1', 'Node A 2']);
-		const result = getUniqueNodeName(name, existingNames);
-		expect(result).toBe('Node A 3');
-	});
-
-	it('should use UUID if more than 99 variations exist', () => {
-		const name = 'Node A';
-		const existingNames = new Set([...Array(100).keys()].map((i) => `Node A ${i}`).concat([name]));
-		const result = getUniqueNodeName(name, existingNames);
-		expect(result).toBe('Node A mock-uuid');
+		expect(result).toEqual([
+			{
+				type: NodeConnectionType.Main,
+				maxConnections: undefined,
+				index: 0,
+				label: undefined,
+			},
+			{ type: NodeConnectionType.AiMemory, maxConnections: 1, index: 0, label: 'Optional Tool' },
+		]);
 	});
 });
 

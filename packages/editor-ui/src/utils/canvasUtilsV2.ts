@@ -3,7 +3,6 @@ import type { INodeUi } from '@/Interface';
 import type { BoundingBox, CanvasConnection, CanvasConnectionPort } from '@/types';
 import { CanvasConnectionMode } from '@/types';
 import type { Connection } from '@vue-flow/core';
-import { v4 as uuid } from 'uuid';
 import { isValidCanvasConnectionMode, isValidNodeConnectionType } from '@/utils/typeGuards';
 import { NodeConnectionType } from 'n8n-workflow';
 
@@ -183,29 +182,16 @@ export function mapLegacyEndpointsToCanvasConnectionPort(
 				.slice(0, endpointIndex + 1)
 				.filter((e) => (typeof e === 'string' ? e : e.type) === type).length - 1;
 		const required = typeof endpoint === 'string' ? false : endpoint.required;
+		const maxConnections = typeof endpoint === 'string' ? undefined : endpoint.maxConnections;
 
 		return {
 			type,
 			index,
 			label,
+			...(maxConnections ? { maxConnections } : {}),
 			...(required ? { required } : {}),
 		};
 	});
-}
-
-export function getUniqueNodeName(name: string, existingNames: Set<string>): string {
-	if (!existingNames.has(name)) {
-		return name;
-	}
-
-	for (let i = 1; i < 100; i++) {
-		const newName = `${name} ${i}`;
-		if (!existingNames.has(newName)) {
-			return newName;
-		}
-	}
-
-	return `${name} ${uuid()}`;
 }
 
 export function checkOverlap(node1: BoundingBox, node2: BoundingBox) {

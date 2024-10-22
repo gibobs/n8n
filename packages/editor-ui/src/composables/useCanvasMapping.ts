@@ -36,9 +36,15 @@ import type {
 	ITaskData,
 	Workflow,
 } from 'n8n-workflow';
-import { NodeConnectionType, NodeHelpers } from 'n8n-workflow';
+import { NodeConnectionType, NodeHelpers, SEND_AND_WAIT_OPERATION } from 'n8n-workflow';
 import type { INodeUi } from '@/Interface';
-import { CUSTOM_API_CALL_KEY, STICKY_NODE_TYPE, WAIT_TIME_UNLIMITED } from '@/constants';
+import {
+	CUSTOM_API_CALL_KEY,
+	FORM_NODE_TYPE,
+	STICKY_NODE_TYPE,
+	WAIT_NODE_TYPE,
+	WAIT_TIME_UNLIMITED,
+} from '@/constants';
 import { sanitizeHtml } from '@/utils/htmlUtils';
 import { MarkerType } from '@vue-flow/core';
 import { useNodeHelpers } from './useNodeHelpers';
@@ -233,7 +239,8 @@ export function useCanvasMapping({
 	const nodeExecutionStatusById = computed(() =>
 		nodes.value.reduce<Record<string, ExecutionStatus>>((acc, node) => {
 			acc[node.id] =
-				workflowsStore.getWorkflowRunData?.[node.name]?.filter(Boolean)[0].executionStatus ?? 'new';
+				workflowsStore.getWorkflowRunData?.[node.name]?.filter(Boolean)[0]?.executionStatus ??
+				'new';
 			return acc;
 		}, {}),
 	);
@@ -327,8 +334,31 @@ export function useCanvasMapping({
 			if (workflowExecution && lastNodeExecuted && isExecutionSummary(workflowExecution)) {
 				if (
 					node.name === workflowExecution.data?.resultData?.lastNodeExecuted &&
-					workflowExecution.waitTill
+					workflowExecution?.waitTill &&
+					!workflowExecution?.finished
 				) {
+					if (
+						node &&
+						node.type === WAIT_NODE_TYPE &&
+						['webhook', 'form'].includes(node.parameters.resume as string)
+					) {
+						acc[node.id] =
+							node.parameters.resume === 'webhook'
+								? i18n.baseText('node.theNodeIsWaitingWebhookCall')
+								: i18n.baseText('node.theNodeIsWaitingFormCall');
+						return acc;
+					}
+
+					if (node?.parameters.operation === SEND_AND_WAIT_OPERATION) {
+						acc[node.id] = i18n.baseText('node.theNodeIsWaitingUserInput');
+						return acc;
+					}
+
+					if (node?.type === FORM_NODE_TYPE) {
+						acc[node.id] = i18n.baseText('node.theNodeIsWaitingFormCall');
+						return acc;
+					}
+
 					const waitDate = new Date(workflowExecution.waitTill);
 
 					if (waitDate.toISOString() === WAIT_TIME_UNLIMITED) {
@@ -525,19 +555,23 @@ export function useCanvasMapping({
 
 		if (nodePinnedDataById.value[fromNode.id]) {
 			const pinnedDataCount = nodePinnedDataById.value[fromNode.id]?.length ?? 0;
-			return i18n.baseText('ndv.output.items', {
-				adjustToNumber: pinnedDataCount,
-				interpolate: { count: String(pinnedDataCount) },
-			});
+			return pinnedDataCount > 0
+				? i18n.baseText('ndv.output.items', {
+						adjustToNumber: pinnedDataCount,
+						interpolate: { count: String(pinnedDataCount) },
+					})
+				: '';
 		} else if (nodeExecutionRunDataById.value[fromNode.id]) {
 			const { type, index } = parseCanvasConnectionHandleString(connection.sourceHandle);
 			const runDataTotal =
 				nodeExecutionRunDataOutputMapById.value[fromNode.id]?.[type]?.[index]?.total ?? 0;
 
-			return i18n.baseText('ndv.output.items', {
-				adjustToNumber: runDataTotal,
-				interpolate: { count: String(runDataTotal) },
-			});
+			return runDataTotal > 0
+				? i18n.baseText('ndv.output.items', {
+						adjustToNumber: runDataTotal,
+						interpolate: { count: String(runDataTotal) },
+					})
+				: '';
 		}
 
 		return '';
