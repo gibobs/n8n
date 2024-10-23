@@ -51,6 +51,11 @@ COPY docker-entrypoint.sh /
 RUN \
 	mkdir .n8n && \
 	chown node:node .n8n
+
+# Copiamos la carpeta dist de los custom-nodes a ~/.n8n/custom/
+RUN mkdir -p .n8n/custom
+COPY custom-nodes/dist .n8n/custom
+
 ENV SHELL /bin/sh
 USER node
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
