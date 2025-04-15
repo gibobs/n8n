@@ -18,15 +18,14 @@ import type {
 	KnownNodesAndCredentials,
 	INodeTypeBaseDescription,
 	INodeTypeDescription,
-	INodeTypeData,
-	ICredentialTypeData,
 	LoadedClass,
 	ICredentialType,
 	INodeType,
 	IVersionedNodeType,
 	INodeProperties,
+	LoadedNodesAndCredentials,
 } from 'n8n-workflow';
-import { ApplicationError, NodeConnectionType } from 'n8n-workflow';
+import { deepCopy, NodeConnectionTypes, UnexpectedError, UserError } from 'n8n-workflow';
 import path from 'path';
 import picocolors from 'picocolors';
 
@@ -38,11 +37,6 @@ import {
 	inE2ETests,
 } from '@/constants';
 import { isContainedWithin } from '@/utils/path-util';
-
-interface LoadedNodesAndCredentials {
-	nodes: INodeTypeData;
-	credentials: ICredentialTypeData;
-}
 
 @Service()
 export class LoadNodesAndCredentials {
@@ -71,7 +65,7 @@ export class LoadNodesAndCredentials {
 	) {}
 
 	async init() {
-		if (inTest) throw new ApplicationError('Not available in tests');
+		if (inTest) throw new UnexpectedError('Not available in tests');
 
 		// Make sure the imported modules can resolve dependencies fine.
 		const delimiter = process.platform === 'win32' ? ';' : ':';
@@ -174,6 +168,29 @@ export class LoadNodesAndCredentials {
 		return isContainedWithin(loader.directory, filePath) ? filePath : undefined;
 	}
 
+	resolveSchema({
+		node,
+		version,
+		resource,
+		operation,
+	}: {
+		node: string;
+		version: string;
+		resource?: string;
+		operation?: string;
+	}): string | undefined {
+		const nodePath = this.known.nodes[node]?.sourcePath;
+		if (!nodePath) {
+			return undefined;
+		}
+
+		const nodeParentPath = path.dirname(nodePath);
+		const schemaPath = ['__schema__', `v${version}`, resource, operation].filter(Boolean).join('/');
+		const filePath = path.resolve(nodeParentPath, schemaPath + '.json');
+
+		return isContainedWithin(nodeParentPath, filePath) ? filePath : undefined;
+	}
+
 	getCustomDirectories(): string[] {
 		const customDirectories = [this.instanceSettings.customExtensionDir];
 
@@ -270,7 +287,7 @@ export class LoadNodesAndCredentials {
 	) {
 		const loader = new constructor(dir, this.excludeNodes, this.includeNodes);
 		if (loader instanceof PackageDirectoryLoader && loader.packageName in this.loaders) {
-			throw new ApplicationError(
+			throw new UserError(
 				picocolors.red(
 					`nodes package ${loader.packageName} is already loaded.\n Please delete this second copy at path ${dir}`,
 				),
@@ -289,15 +306,20 @@ export class LoadNodesAndCredentials {
 	 */
 	createAiTools() {
 		const usableNodes: Array<INodeTypeBaseDescription | INodeTypeDescription> =
-			this.types.nodes.filter((nodetype) => nodetype.usableAsTool === true);
+			this.types.nodes.filter((nodeType) => nodeType.usableAsTool);
 
 		for (const usableNode of usableNodes) {
-			const description: INodeTypeBaseDescription | INodeTypeDescription =
-				structuredClone(usableNode);
+			const description =
+				typeof usableNode.usableAsTool === 'object'
+					? ({
+							...deepCopy(usableNode),
+							...usableNode.usableAsTool?.replacements,
+						} as INodeTypeBaseDescription)
+					: deepCopy(usableNode);
 			const wrapped = this.convertNodeToAiTool({ description }).description;
 
 			this.types.nodes.push(wrapped);
-			this.known.nodes[wrapped.name] = structuredClone(this.known.nodes[usableNode.name]);
+			this.known.nodes[wrapped.name] = { ...this.known.nodes[usableNode.name] };
 
 			const credentialNames = Object.entries(this.known.credentials)
 				.filter(([_, credential]) => credential?.supportedNodes?.includes(usableNode.name))
@@ -378,6 +400,13 @@ export class LoadNodesAndCredentials {
 		}
 	}
 
+	recognizesNode(fullNodeType: string): boolean {
+		const [packageName, nodeType] = fullNodeType.split('.');
+		const { loaders } = this;
+		const loader = loaders[packageName];
+		return !!loader && nodeType in loader.known.nodes;
+	}
+
 	getNode(fullNodeType: string): LoadedClass<INodeType | IVersionedNodeType> {
 		const [packageName, nodeType] = fullNodeType.split('.');
 		const { loaders } = this;
@@ -421,7 +450,7 @@ export class LoadNodesAndCredentials {
 		if (isFullDescription(item.description)) {
 			item.description.name += 'Tool';
 			item.description.inputs = [];
-			item.description.outputs = [NodeConnectionType.AiTool];
+			item.description.outputs = [NodeConnectionTypes.AiTool];
 			item.description.displayName += ' Tool';
 			delete item.description.usableAsTool;
 
@@ -461,14 +490,6 @@ export class LoadNodesAndCredentials {
 					placeholder: `e.g. ${item.description.description}`,
 				};
 
-				const noticeProp: INodeProperties = {
-					displayName:
-						"Use the expression {{ $fromAI('placeholder_name') }} for any data to be filled by the model",
-					name: 'notice',
-					type: 'notice',
-					default: '',
-				};
-
 				item.description.properties.unshift(descProp);
 
 				// If node has resource or operation we can determine pre-populate tool description based on it
@@ -482,8 +503,6 @@ export class LoadNodesAndCredentials {
 						},
 					};
 				}
-
-				item.description.properties.unshift(noticeProp);
 			}
 		}
 
@@ -493,7 +512,7 @@ export class LoadNodesAndCredentials {
 			categories: ['AI'],
 			subcategories: {
 				AI: ['Tools'],
-				Tools: ['Other Tools'],
+				Tools: item.description.codex?.subcategories?.Tools ?? ['Other Tools'],
 			},
 			resources,
 		};

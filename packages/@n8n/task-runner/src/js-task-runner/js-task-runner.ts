@@ -98,19 +98,45 @@ export class JsTaskRunner extends TaskRunner {
 		const { jsRunnerConfig } = config;
 
 		const parseModuleAllowList = (moduleList: string) =>
-			moduleList === '*' ? null : new Set(moduleList.split(',').map((x) => x.trim()));
+			moduleList === '*'
+				? '*'
+				: new Set(
+						moduleList
+							.split(',')
+							.map((x) => x.trim())
+							.filter((x) => x !== ''),
+					);
+
+		const allowedBuiltInModules = parseModuleAllowList(jsRunnerConfig.allowedBuiltInModules ?? '');
+		const allowedExternalModules = parseModuleAllowList(
+			jsRunnerConfig.allowedExternalModules ?? '',
+		);
 
 		this.requireResolver = createRequireResolver({
-			allowedBuiltInModules: parseModuleAllowList(jsRunnerConfig.allowedBuiltInModules ?? ''),
-			allowedExternalModules: parseModuleAllowList(jsRunnerConfig.allowedExternalModules ?? ''),
+			allowedBuiltInModules,
+			allowedExternalModules,
 		});
 
-		this.preventPrototypePollution();
+		this.preventPrototypePollution(allowedExternalModules, jsRunnerConfig.allowPrototypeMutation);
 	}
 
-	private preventPrototypePollution() {
-		// Freeze globals, except for Jest
-		if (process.env.NODE_ENV !== 'test') {
+	private preventPrototypePollution(
+		allowedExternalModules: Set<string> | '*',
+		allowPrototypeMutation: boolean,
+	) {
+		if (allowedExternalModules instanceof Set) {
+			// This is a workaround to enable the allowed external libraries to mutate
+			// prototypes directly. For example momentjs overrides .toString() directly
+			// on the Moment.prototype, which doesn't work if Object.prototype has been
+			// frozen. This works as long as the overrides are done when the library is
+			// imported.
+			for (const module of allowedExternalModules) {
+				require(module);
+			}
+		}
+
+		// Freeze globals if needed
+		if (!allowPrototypeMutation) {
 			Object.getOwnPropertyNames(globalThis)
 				// @ts-expect-error globalThis does not have string in index signature
 				// eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
