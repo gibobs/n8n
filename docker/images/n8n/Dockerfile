@@ -2,7 +2,7 @@ ARG NODE_VERSION=20
 ARG N8N_VERSION=snapshot
 
 # 1. Create an image to build n8n
-FROM --platform=linux/amd64 n8nio/base:${NODE_VERSION} AS builder
+FROM n8nio/base:${NODE_VERSION} AS builder
 
 # Build the application from source
 WORKDIR /src
