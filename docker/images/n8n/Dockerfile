@@ -50,7 +50,7 @@ ENV NODE_ICU_DATA=/usr/local/lib/node_modules/full-icu
 ENV SHELL=/bin/sh
 
 # For ZIP support
-RUN apk add --no-cache unzip
+RUN apk add --no-cache libarchive-tools
 
 WORKDIR /home/node
 
